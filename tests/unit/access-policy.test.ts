@@ -37,9 +37,9 @@ describe('permissionsFor', () => {
     });
   });
 
-  it('lets HR review evidence and view the team, but not manage anything', () => {
+  it('lets HR review and decide evidence and view the team, but not manage anything', () => {
     const p = permissionsFor(actor({ role: 'hr' }));
-    expect(p).toMatchObject({ reviewEvidence: true, decideEvidence: false, viewTeam: true, manageItems: false, manageUsers: false });
+    expect(p).toMatchObject({ reviewEvidence: true, decideEvidence: true, viewTeam: true, manageItems: false, manageUsers: false });
   });
 
   it('lets a manager view (their) team only', () => {

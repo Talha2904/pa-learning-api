@@ -38,10 +38,11 @@ const statusLabel = (e: PlanEntry) =>
 /** Whether the evidence behind a completion has been confirmed (verified / approved / no file needed). */
 const evidenceLabel = (e: PlanEntry) =>
   e.status === 'completed' ? (e.confirmed ? 'Confirmed' : 'Under review') : e.rejected ? 'Rejected' : '';
-const checkedBy = (e: PlanEntry) => {
+const checkedBy = (e: PlanEntry, snap: ProgressSnapshot) => {
   const c = e.completion ?? e.rejected;
   if (!c?.evidence) return c ? 'No file needed' : '';
-  return c.reviewSource === 'manual' ? 'Learning Team' : c.reviewSource === 'ai' ? 'Automatic check' : 'Not yet';
+  const reviewer = c.reviewedBy ? snap.peopleById.get(c.reviewedBy)?.fullName : undefined;
+  return c.reviewSource === 'manual' ? (reviewer ?? 'Reviewer') : c.reviewSource === 'ai' ? 'Automatic check' : 'Not yet';
 };
 const ukDate = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -75,8 +76,20 @@ export class ReportsService {
     const plans = learners.map((p) => snap.progress.planFor(p, period));
     const title = `Project Accountants - ${TEAM_TITLES[kind]} - ${snap.cycle.year}`;
 
-    const sheets: SheetSpec[] = [this.summarySheet(title, period, plans, snap)];
-    sheets.push(this.teamDetail(kind, plans, snap));
+    // Each report is shaped for its purpose: the completion report is the per-person summary,
+    // the mandatory report adds a mandatory-only summary, and the rest are a single titled list.
+    const titled = (sheet: SheetSpec): SheetSpec => ({
+      ...sheet,
+      rows: [[title], ['Period', periodLabel(period)], ['Generated', snap.today], [], ...sheet.rows],
+      headerRow: (sheet.headerRow ?? 0) + 4,
+      titleRows: [0],
+    });
+    const sheets: SheetSpec[] =
+      kind === 'completion'
+        ? [this.summarySheet(title, period, plans, snap)]
+        : kind === 'mandatory'
+          ? [this.mandatorySummary(title, period, plans, snap), titled(this.teamDetail(kind, plans, snap))]
+          : [titled(this.teamDetail(kind, plans, snap))];
 
     return {
       fileName: `project-accountants-${kind}-report-${snap.cycle.year}.xlsx`,
@@ -138,6 +151,7 @@ export class ReportsService {
       'Completed On',
       'Evidence File',
       'Reflection',
+      'Course Link',
     ];
     const rows = entries.map((e) => [
       e.item.title,
@@ -153,6 +167,7 @@ export class ReportsService {
       e.completion?.completedOn ?? null,
       e.completion?.evidence?.fileName ?? null,
       e.completion?.reflection ?? null,
+      e.item.link,
     ]);
 
     const slug = actor.fullName
@@ -168,7 +183,7 @@ export class ReportsService {
             name: 'Activity',
             rows: [head, ...rows],
             headerRow: 0,
-            columnWidths: [38, 24, 22, 20, 16, 8, 12, 11, 12, 14, 13, 26, 46],
+            columnWidths: [38, 24, 22, 20, 16, 8, 12, 11, 12, 14, 13, 26, 46, 50],
           },
         ],
         { title: `CPD Record ${snap.cycle.year}` },
@@ -227,6 +242,48 @@ export class ReportsService {
     };
   }
 
+  /** Per-person compliance view: mandatory items only. */
+  private mandatorySummary(
+    title: string,
+    period: Period,
+    plans: LearningPlan<Person>[],
+    snap: ProgressSnapshot,
+  ): SheetSpec {
+    const head = [
+      'Member',
+      'Email',
+      'Designation',
+      'Line Manager',
+      'Mandatory Assigned',
+      'Mandatory Completed',
+      'Mandatory Confirmed',
+      'Mandatory Outstanding',
+      'Mandatory Overdue',
+      'Compliant',
+    ];
+    const rows = plans
+      .filter(({ summary: s }) => s.mandatoryAssigned > 0)
+      .map(({ person, entries, summary: s }) => [
+        person.fullName,
+        person.email,
+        this.designation(snap, person),
+        person.lineManagerId ? (snap.peopleById.get(person.lineManagerId)?.fullName ?? '') : '',
+        s.mandatoryAssigned,
+        s.mandatoryCompleted,
+        s.mandatoryConfirmed,
+        s.mandatoryOutstanding,
+        entries.filter((e) => e.item.isMandatory && e.status === 'overdue').length,
+        s.mandatoryOutstanding === 0 ? 'Yes' : 'No',
+      ]);
+    return {
+      name: 'Mandatory Summary',
+      rows: [[title], ['Period', periodLabel(period)], ['Generated', snap.today], [], head, ...rows],
+      headerRow: 4,
+      titleRows: [0],
+      columnWidths: [26, 38, 20, 24, 18, 19, 19, 21, 18, 11],
+    };
+  }
+
   private teamDetail(kind: TeamReportKind, plans: LearningPlan<Person>[], snap: ProgressSnapshot): SheetSpec {
     const rowsFor = (filter: (e: PlanEntry) => boolean) =>
       plans.flatMap((pl) => pl.entries.filter(filter).map((e) => ({ person: pl.person, e })));
@@ -255,6 +312,7 @@ export class ReportsService {
           'Days Overdue',
           'Evidence File',
           'Reflection',
+          'Course Link',
         ];
         const rows = rowsFor(() => true).map(({ person, e }) => [
           person.fullName,
@@ -277,12 +335,13 @@ export class ReportsService {
           e.daysOverdue,
           evidenceFile(e),
           e.completion?.reflection ?? null,
+          e.item.link,
         ]);
         return {
           name: 'Learning Log',
           rows: [head, ...rows],
           headerRow: 0,
-          columnWidths: [24, 36, 20, 16, 38, 24, 22, 20, 16, 11, 13, 14, 14, 12, 16, 12, 15, 13, 26, 44],
+          columnWidths: [24, 36, 20, 16, 38, 24, 22, 20, 16, 11, 13, 14, 14, 12, 16, 12, 15, 13, 26, 44, 50],
         };
       }
       case 'evidence': {
@@ -307,7 +366,7 @@ export class ReportsService {
             c.evidence?.fileName ?? null,
             c.reflection,
             evidenceLabel(e),
-            checkedBy(e),
+            checkedBy(e, snap),
             c.reviewNotes,
           ];
         });
@@ -388,13 +447,47 @@ export class ReportsService {
           columnWidths: [24, 36, 12, 38, 16, 20, 11, 18, 28, 56],
         };
       }
+      case 'outstanding': {
+        // A chase list: who still has what to do, most overdue first, with the link to the course.
+        const head = [
+          'Member',
+          'Email',
+          'Line Manager',
+          'Activity',
+          'Provider',
+          'Mandatory',
+          'Hours',
+          'Due Date',
+          'Status',
+          'Days Overdue',
+          'Rejected Reason',
+          'Course Link',
+        ];
+        const rows = rowsFor((e) => e.status !== 'completed')
+          .sort((a, b) => b.e.daysOverdue - a.e.daysOverdue)
+          .map(({ person, e }) => [
+            person.fullName,
+            person.email,
+            person.lineManagerId ? (snap.peopleById.get(person.lineManagerId)?.fullName ?? '') : '',
+            e.item.title,
+            e.item.provider,
+            e.item.isMandatory ? 'Yes' : 'No',
+            e.item.hours,
+            e.item.dueDate,
+            statusLabel(e),
+            e.daysOverdue,
+            e.rejected?.reviewNotes ?? null,
+            e.item.link,
+          ]);
+        return {
+          name: 'Outstanding',
+          rows: [head, ...rows],
+          headerRow: 0,
+          columnWidths: [24, 36, 24, 38, 16, 11, 8, 12, 12, 13, 40, 50],
+        };
+      }
       default: {
-        const filter =
-          kind === 'mandatory'
-            ? (e: PlanEntry) => e.item.isMandatory
-            : kind === 'outstanding'
-              ? (e: PlanEntry) => e.status !== 'completed'
-              : () => true;
+        const filter = kind === 'mandatory' ? (e: PlanEntry) => e.item.isMandatory : () => true;
         const head = [
           'Member',
           'Designation',
@@ -410,6 +503,7 @@ export class ReportsService {
           'Days Overdue',
           'Completed On',
           'Evidence File',
+          'Course Link',
         ];
         const rows = rowsFor(filter).map(({ person, e }) => [
           person.fullName,
@@ -426,12 +520,13 @@ export class ReportsService {
           e.daysOverdue,
           e.completion?.completedOn ?? null,
           evidenceFile(e),
+          e.item.link,
         ]);
         return {
-          name: 'Detail',
+          name: kind === 'mandatory' ? 'Mandatory Items' : 'Detail',
           rows: [head, ...rows],
           headerRow: 0,
-          columnWidths: [24, 20, 38, 24, 22, 20, 16, 8, 12, 12, 14, 13, 14, 26],
+          columnWidths: [24, 20, 38, 24, 22, 20, 16, 8, 12, 12, 14, 13, 14, 26, 50],
         };
       }
     }

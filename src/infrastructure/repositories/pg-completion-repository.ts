@@ -18,13 +18,14 @@ interface CompletionRow {
   review_source: Completion['reviewSource'];
   review_notes: string | null;
   reviewed_at: Date | null;
+  reviewed_by: string | null;
   submitted_at: Date;
   updated_at: Date;
 }
 
 const COLUMNS = `c.id, c.profile_id, c.item_id, c.completed_on, c.reflection, c.evidence_path, c.evidence_file_name,
   c.evidence_mime_type, c.evidence_size_bytes, c.evidence_sha256, c.review_status, c.review_source, c.review_notes,
-  c.reviewed_at, c.submitted_at, c.updated_at`;
+  c.reviewed_at, c.reviewed_by, c.submitted_at, c.updated_at`;
 
 function toCompletion(r: CompletionRow): Completion {
   return {
@@ -46,6 +47,7 @@ function toCompletion(r: CompletionRow): Completion {
     reviewSource: r.review_source,
     reviewNotes: r.review_notes,
     reviewedAt: r.reviewed_at,
+    reviewedBy: r.reviewed_by,
     submittedAt: r.submitted_at,
     updatedAt: r.updated_at,
   };

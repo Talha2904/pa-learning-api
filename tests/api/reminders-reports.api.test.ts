@@ -142,29 +142,47 @@ describe('reports', () => {
       res.on('end', () => cb(null, Buffer.concat(chunks)));
     });
 
-  it('exports the full learning log with summary + detail sheets', async () => {
+  const TITLE_ROWS = 4; // title, period, generated, blank
+
+  it('exports the full learning log as one titled sheet, with course links', async () => {
     const res = await binary(request(o.t.app).get('/api/v1/reports/team/log').set('Authorization', o.amina.auth));
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toContain('project-accountants-log-report-2026.xlsx');
     const wb = await workbook(res);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Learning Log']);
-    expect(wb.getWorksheet('Learning Log')!.rowCount).toBe(1 + 8 * 2); // header + 8 people × 2 items
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Learning Log']);
+    const log = wb.getWorksheet('Learning Log')!;
+    expect(log.getCell('A1').value).toBe('Project Accountants - Full Learning Log - 2026');
+    expect(log.rowCount).toBe(TITLE_ROWS + 1 + 8 * 2); // header + 8 people × 2 items
+    expect(log.getRow(TITLE_ROWS + 1).values).toContain('Course Link');
+  });
+
+  it('shapes each team report for its purpose', async () => {
+    const sheetsOf = async (kind: string) =>
+      (await workbook(await binary(request(o.t.app).get(`/api/v1/reports/team/${kind}`).set('Authorization', o.amina.auth)))).worksheets.map(
+        (w) => w.name,
+      );
+    expect(await sheetsOf('completion')).toEqual(['Summary']);
+    expect(await sheetsOf('mandatory')).toEqual(['Mandatory Summary', 'Mandatory Items']);
+    expect(await sheetsOf('outstanding')).toEqual(['Outstanding']);
+    expect(await sheetsOf('evidence')).toEqual(['Evidence']);
+    expect(await sheetsOf('icaew')).toEqual(['ICAEW CPD Log']);
+    expect(await sheetsOf('acca')).toEqual(['ACCA CPD Log']);
   });
 
   it("scopes a manager's export to their own team", async () => {
     const res = await binary(request(o.t.app).get('/api/v1/reports/team/completion').set('Authorization', o.priya.auth));
     const wb = await workbook(res);
-    const detail = wb.getWorksheet('Detail')!;
+    const summary = wb.getWorksheet('Summary')!;
     const members = new Set<string>();
-    detail.eachRow((row, n) => n > 1 && members.add(String(row.getCell(1).value)));
+    summary.eachRow((row, n) => n > TITLE_ROWS + 1 && members.add(String(row.getCell(1).value)));
     expect([...members]).toEqual(['Grace Lin']);
   });
 
   it('exports ICAEW log of completed activity only, honouring the period', async () => {
     const inRange = await binary(request(o.t.app).get('/api/v1/reports/team/icaew?from=2026-09-01&to=2026-09-30').set('Authorization', o.amina.auth));
-    expect((await workbook(inRange)).getWorksheet('ICAEW CPD Log')!.rowCount).toBe(2);
+    expect((await workbook(inRange)).getWorksheet('ICAEW CPD Log')!.rowCount).toBe(TITLE_ROWS + 2);
     const outRange = await binary(request(o.t.app).get('/api/v1/reports/team/icaew?from=2026-01-01&to=2026-06-30').set('Authorization', o.amina.auth));
-    expect((await workbook(outRange)).getWorksheet('ICAEW CPD Log')!.rowCount).toBe(1);
+    expect((await workbook(outRange)).getWorksheet('ICAEW CPD Log')!.rowCount).toBe(TITLE_ROWS + 1);
   });
 
   it('validates report kind and period, and blocks team reports for team members', async () => {
@@ -179,6 +197,8 @@ describe('reports', () => {
     const wb = await workbook(res);
     const cover = wb.getWorksheet('CPD Record')!;
     expect(cover.getCell('B3').value).toBe('Sarah Whitfield');
-    expect(wb.getWorksheet('Activity')!.rowCount).toBe(3);
+    const activity = wb.getWorksheet('Activity')!;
+    expect(activity.rowCount).toBe(3);
+    expect(activity.getRow(1).values).toContain('Course Link');
   });
 });

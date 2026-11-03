@@ -137,7 +137,7 @@ describe('item import', () => {
 
   it('previews rows with per-row errors (reads category and cpd_type separately)', async () => {
     const file = await sheet([
-      ['GDPR', 'Mandatory Compliance', 'Structured CPD', 'eLearning', 'Internal', 1, '30/04/2026', 'yes', '', '', '', 'all'],
+      ['GDPR', 'Mandatory Compliance', 'Structured CPD', 'eLearning', 'Internal', 1, '30/04/2026', 'yes', '', 'https://www.icaew.com/', '', 'all'],
       ['Excel', 'Technical Skills', '', 'Workshop', 'Internal', 4, '2026-07-31', 'no', 'acknowledgement', '', '', 'Junior Accountant; imoolla@pa.co.uk'],
       ['', 'Nope', '', '', '', 'abc', 'not-a-date', 'maybe', '', 'ftp://x', '', 'Astronaut'],
     ]);
@@ -149,7 +149,9 @@ describe('item import', () => {
     expect(res.body.data).toMatchObject({ validCount: 2, errorCount: 1 });
     const [gdpr, excel, bad] = res.body.data.rows;
     expect(gdpr.summary).toMatchObject({ title: 'GDPR', dueDate: '2026-04-30', assignTo: 'all' });
+    expect(gdpr.warnings).toEqual([expect.stringContaining("provider's home page")]); // warns, does not block
     expect(excel.errors).toEqual([]);
+    expect(excel.warnings).toEqual([]);
     expect(bad.errors.join(' | ')).toMatch(/name is required.*hours.*category.*due_date.*mandatory.*link.*Astronaut/);
   });
 

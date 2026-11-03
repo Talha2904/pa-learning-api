@@ -17,7 +17,7 @@ export interface Permissions {
   manageReminders: boolean;
   /** Evidence Review page (all submissions). */
   reviewEvidence: boolean;
-  /** Approve / reject evidence and re-run automatic checks (Learning Team only; HR is read-only). */
+  /** Approve / reject evidence and re-run automatic checks (Learning Team and HR). */
   decideEvidence: boolean;
   /** Dashboard / Team Progress / team report exports (scoped). */
   viewTeam: boolean;
@@ -45,7 +45,7 @@ export function permissionsFor(actor: Actor): Permissions {
     manageUsers: isAdmin,
     manageReminders: isAdmin,
     reviewEvidence: isAdmin || actor.role === 'hr',
-    decideEvidence: isAdmin,
+    decideEvidence: isAdmin || actor.role === 'hr',
     viewTeam: scope !== 'self',
   };
 }

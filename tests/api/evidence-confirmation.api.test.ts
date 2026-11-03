@@ -110,7 +110,8 @@ describe('reports', () => {
     await wb.xlsx.load(res.body as unknown as ArrayBuffer);
     const rows: unknown[][] = [];
     wb.getWorksheet(sheet)!.eachRow((r) => rows.push((r.values as unknown[]).slice(1)));
-    return rows;
+    return rows.slice(rows.findIndex((r) => r[0] === 'Member')); // skip the title block above the header
+
   };
 
   it('labels each completion Confirmed / Under review in the evidence register', async () => {
@@ -149,10 +150,10 @@ describe('reminders', () => {
     o.t.clock.todayValue = '2026-09-10';
   });
 
-  it('sends the Learning Team a digest on Monday, once', async () => {
+  it('sends the Learning Team and HR a digest on Monday, once', async () => {
     const sent = await runOn('2026-09-14'); // Monday
     const digests = sent.filter((m) => m.subject.includes('waiting for review'));
-    expect(digests.map((m) => m.to)).toEqual(['apatel@pa.co.uk']);
+    expect(digests.map((m) => m.to).sort()).toEqual(['apatel@pa.co.uk', 'emarsh@pa.co.uk']);
     expect(digests[0]!.text).toContain('Tomas Neri - AML annual update - 13 days');
     // Nobody is chased for evidence that is only under review.
     expect(sent.some((m) => m.to === 'tneri@pa.co.uk')).toBe(false);

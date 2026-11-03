@@ -17,12 +17,14 @@ import {
 } from '../../shared/errors/app-errors.js';
 import type { WorkbookReader, WorkbookWriter } from '../ports/workbook.js';
 import type { UnitOfWork } from '../ports/unit-of-work.js';
-import { byName, isHttpUrl, parseDate, parseHours, parseYesNo } from '../services/import-parsing.js';
+import { byName, isHomePageLink, isHttpUrl, parseDate, parseHours, parseYesNo } from '../services/import-parsing.js';
 
 export interface ImportRowResult {
   rowNumber: number;
   values: Record<string, string>;
   errors: string[];
+  /** Problems worth fixing that do not block the import (e.g. a link to a provider's front page). */
+  warnings: string[];
   /** Human summary for the review step. */
   summary: {
     title: string;
@@ -236,6 +238,9 @@ export class ItemImportService {
         rowNumber: r.rowNumber,
         values: r.values,
         errors,
+        warnings: isHomePageLink(item?.link)
+          ? ["link goes to the provider's home page - use the link to the specific course"]
+          : [],
         summary: item
           ? {
               title: item.title,

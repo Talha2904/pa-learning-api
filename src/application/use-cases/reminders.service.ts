@@ -175,7 +175,7 @@ export class RemindersService {
   }
 
   /**
-   * Weekly (Mondays) email to the Learning Team when evidence has waited more
+   * Weekly (Mondays) email to the Learning Team and HR when evidence has waited more
    * than REVIEW_NUDGE_DAYS days for a decision. At most once per day (claimOnce).
    * Returns how many emails were sent.
    */
@@ -183,7 +183,8 @@ export class RemindersService {
     if (new Date(`${snap.today}T00:00:00Z`).getUTCDay() !== DIGEST_WEEKDAY) return 0;
     const waiting = awaitingReview(snap);
     const stale = waitingTooLong(waiting, snap.today).sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
-    const team = snap.activePeople.filter((p) => p.role === 'learning_team');
+    // Everyone who can approve or reject evidence (Learning Team and HR).
+    const team = snap.activePeople.filter((p) => can(p, 'decideEvidence'));
     if (stale.length === 0 || team.length === 0) return 0;
     if (!(await this.reminders.claimOnce(`review-digest:${snap.today}`))) return 0;
 

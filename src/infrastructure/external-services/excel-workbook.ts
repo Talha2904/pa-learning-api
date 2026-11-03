@@ -4,6 +4,8 @@ import type { Cell, SheetSpec, WorkbookReader, WorkbookWriter } from '../../appl
 import { UnsupportedMediaError, ValidationError } from '../../shared/errors/app-errors.js';
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4F7FB' } } as const;
+const WEB_LINK = /^https?:\/\/\S+$/i;
+const LINK_FONT = { color: { argb: 'FF0563C1' }, underline: true } as const;
 
 /** exceljs-backed workbook writer/reader. */
 export class ExcelWorkbook implements WorkbookWriter, WorkbookReader {
@@ -16,7 +18,16 @@ export class ExcelWorkbook implements WorkbookWriter, WorkbookReader {
 
     for (const spec of sheets) {
       const ws = wb.addWorksheet(spec.name.slice(0, 31));
-      for (const row of spec.rows) ws.addRow(row.map((c) => (c === null ? '' : c)));
+      for (const row of spec.rows) {
+        const added = ws.addRow(row.map((c) => (c === null ? '' : c)));
+        // Web links become clickable hyperlinks (e.g. the Course Link column).
+        added.eachCell((cell) => {
+          if (typeof cell.value === 'string' && WEB_LINK.test(cell.value)) {
+            cell.value = { text: cell.value, hyperlink: cell.value };
+            cell.font = LINK_FONT;
+          }
+        });
+      }
       spec.columnWidths?.forEach((w, i) => {
         ws.getColumn(i + 1).width = w;
       });

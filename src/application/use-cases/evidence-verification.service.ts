@@ -36,6 +36,13 @@ export function retryDelayMs(attempt: number, random: () => number = Math.random
   const base = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length) - 1]!;
   return Math.round(base * (0.8 + random() * 0.4));
 }
+/** Reviewers never decide on their own evidence - someone else always checks it. */
+function assertNotOwn(actor: Actor, completion: Completion): void {
+  if (completion.profileId === actor.id) {
+    throw new ForbiddenError('You cannot review your own evidence. Ask a colleague in the Learning Team or HR.', 'OWN_EVIDENCE');
+  }
+}
+
 /** A job still 'running' after this long belongs to a crashed process. */
 const STALE_AFTER_MS = 10 * 60_000;
 const FAILED_NOTE = 'The automatic check could not be completed - please review this evidence manually.';
@@ -46,7 +53,7 @@ const BUSY_NOTE =
  * Automated evidence verification (ADR 0005).
  *
  *   upload → enqueue → worker: processNext() → AI reads the file → firm policy
- *   (decideEvidence) → verified (source ai) or flagged → Learning Team decides.
+ *   (decideEvidence) → verified (source ai) or flagged → Learning Team / HR decides.
  *
  * The AI never rejects: anything not clearly fine is flagged for a person, and
  * the AI never overrides a decision a person already made.
@@ -92,11 +99,12 @@ export class EvidenceVerificationService {
     return this.checks.requeueStale(STALE_AFTER_MS);
   }
 
-  /** Learning Team: approve or reject a submission (overrides the automatic result). */
+  /** Learning Team / HR: approve or reject a submission (overrides the automatic result). */
   async decide(actor: Actor, completionId: string, decision: ManualDecision, note?: string | null): Promise<CompletionDto> {
     if (!can(actor, 'decideEvidence')) throw new ForbiddenError();
     const completion = await this.completions.findById(completionId);
     if (!completion) throw new NotFoundError('completion', 'COMPLETION_NOT_FOUND');
+    assertNotOwn(actor, completion);
     const notes = note?.trim() || null;
     if (decision === 'rejected' && !notes) {
       throw new BusinessRuleError('Give a reason so the person knows what to fix.', 'REJECTION_REASON_REQUIRED');
@@ -120,7 +128,7 @@ export class EvidenceVerificationService {
     });
   }
 
-  /** Learning Team: run the automatic check again (e.g. after a provider outage). */
+  /** Learning Team / HR: run the automatic check again (e.g. after a provider outage). */
   async recheck(actor: Actor, completionId: string): Promise<CompletionDto> {
     if (!can(actor, 'decideEvidence')) throw new ForbiddenError();
     if (!this.enabled) {
@@ -128,6 +136,7 @@ export class EvidenceVerificationService {
     }
     const completion = await this.completions.findById(completionId);
     if (!completion?.evidence) throw new NotFoundError('evidence', 'EVIDENCE_NOT_FOUND');
+    assertNotOwn(actor, completion);
     const check = await this.checks.enqueue(completion.id, completion.evidence.path);
     await this.audit.record({ actorId: actor.id, action: 'evidence.recheck', entityType: 'completion', entityId: completion.id });
     return toCompletionDto(completion, check, true);

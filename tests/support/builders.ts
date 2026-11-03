@@ -42,6 +42,7 @@ export function completion(profileId: string, itemId: string, completedOn = '202
     reviewSource: null,
     reviewNotes: null,
     reviewedAt: null,
+    reviewedBy: null,
     submittedAt: new Date(0),
     updatedAt: new Date(0),
   };

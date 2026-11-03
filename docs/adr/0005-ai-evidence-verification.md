@@ -24,8 +24,8 @@ upload → evidence_checks row (queued) → background worker → AI model reads
   learning year / more than `AI_DATE_TOLERANCE_DAYS` from the date entered, fewer hours than required, editing signs,
   the exact same file used elsewhere (SHA-256), or low confidence → **flagged** with plain-English reasons.
   Otherwise **verified** (`review_source = 'ai'`).
-- **The AI never rejects and never overrides a person.** Only the Learning Team can reject (with a reason), which makes
-  the item outstanding again. HR can see results but not decide.
+- **The AI never rejects and never overrides a person.** Only the Learning Team or HR can reject (with a reason), which
+  makes the item outstanding again. (HR was read-only until 2026-11-03; the LMS team asked for HR to approve too.)
 - **Provider-agnostic port** (`EvidenceAnalyzer`); Gemini (`@google/genai`) is the adapter, chosen for cost and native
   PDF/image reading. The document is passed as untrusted data and the system prompt tells the model to ignore any
   instructions inside it.

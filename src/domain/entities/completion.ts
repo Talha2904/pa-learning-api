@@ -17,6 +17,8 @@ export interface Completion {
   /** Why it was flagged/rejected (shown to the person and reviewers). */
   reviewNotes: string | null;
   reviewedAt: Date | null;
+  /** Person who made a manual decision (null for the automatic check or not reviewed). */
+  reviewedBy: string | null;
   submittedAt: Date;
   updatedAt: Date;
 }

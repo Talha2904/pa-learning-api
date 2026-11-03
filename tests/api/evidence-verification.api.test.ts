@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { EvidenceAnalyzerError } from '../../src/application/ports/evidence-analyzer.js';
@@ -170,11 +171,23 @@ describe('Learning Team decisions', () => {
     });
   });
 
-  it('only the Learning Team may decide; HR and managers are read-only', async () => {
+  it('the Learning Team and HR may decide; managers are read-only', async () => {
     const id = (await register())[0]!.completion.id as string;
-    expect((await decide(o.elena, id, { decision: 'verified' })).status).toBe(403);
+    // HR gets past the permission check (and hits the reason rule instead), without changing the record.
+    expect((await decide(o.elena, id, { decision: 'rejected' })).body.code).toBe('REJECTION_REASON_REQUIRED');
     expect((await decide(o.daniel, id, { decision: 'verified' })).status).toBe(403);
-    expect((await request(o.t.app).post(`/api/v1/completions/${id}/recheck`).set('Authorization', o.elena.auth)).status).toBe(403);
+    expect((await request(o.t.app).post(`/api/v1/completions/${id}/recheck`).set('Authorization', o.daniel.auth)).status).toBe(403);
+  });
+
+  it('no one may decide on or re-check their own evidence', async () => {
+    const own = await submit(o.elena, ack, '2026-02-05');
+    expect(own.status).toBe(201);
+    const id = own.body.data.id as string;
+    const self = await decide(o.elena, id, { decision: 'verified' });
+    expect(self.status).toBe(403);
+    expect(self.body.code).toBe('OWN_EVIDENCE');
+    // A colleague is not blocked (and hits the reason rule instead, leaving the record unchanged).
+    expect((await decide(o.amina, id, { decision: 'rejected' })).body.code).toBe('REJECTION_REASON_REQUIRED');
   });
 
   it('requires a reason to reject; a rejection makes the item outstanding again', async () => {
@@ -193,6 +206,22 @@ describe('Learning Team decisions', () => {
 
     const audit = await o.t.db.query(`select 1 from audit_events where action = 'evidence.rejected' and entity_id = $1`, [row.completion.id]);
     expect(audit.rowCount).toBe(1);
+
+    // The evidence register names the person who decided.
+    const report = await request(o.t.app)
+      .get('/api/v1/reports/team/evidence')
+      .set('Authorization', o.amina.auth)
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(report.body as unknown as ArrayBuffer);
+    const values: unknown[][] = [];
+    wb.getWorksheet('Evidence')!.eachRow((r) => values.push((r.values as unknown[]).slice(1)));
+    expect(values.find((r) => r[0] === 'Tomas Neri' && r[1] === 'IFRS 16 leases')).toContain('Amina Patel');
   });
 
   it('the AI never overrides a person: a re-check keeps the manual decision', async () => {
