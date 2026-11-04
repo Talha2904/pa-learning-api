@@ -64,6 +64,19 @@ export class SupabaseIdentityProvider implements IdentityProvider {
     }
   }
 
+  async createRecoveryToken(email: string): Promise<string | null> {
+    // generate_link creates the token but does not email it (unlike /recover).
+    const res = await this.call('POST', '/auth/v1/admin/generate_link', { type: 'recovery', email });
+    if (res.ok) {
+      const body = (await res.json()) as { hashed_token?: string; properties?: { hashed_token?: string } };
+      const token = body.hashed_token ?? body.properties?.hashed_token;
+      if (!token) throw new ExternalServiceError('Could not create a reset link.', 'AUTH_PROVIDER_ERROR');
+      return token;
+    }
+    if (res.status === 404 || res.status === 422) return null; // no such user
+    throw new ExternalServiceError('Could not create a reset link.', 'AUTH_PROVIDER_ERROR', { status: res.status });
+  }
+
   private async call(method: string, path: string, body?: unknown): Promise<Response> {
     try {
       return await this.fetchImpl(`${this.supabaseUrl.replace(/\/$/, '')}${path}`, {

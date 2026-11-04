@@ -32,6 +32,16 @@ export class FakeIdentityProvider implements IdentityProvider {
   async deleteUser(authUserId: string) {
     this.users.delete(authUserId);
   }
+
+  /** Recovery tokens issued, newest last. */
+  readonly recoveryTokens: { email: string; token: string }[] = [];
+
+  async createRecoveryToken(email: string) {
+    if (![...this.users.values()].some((u) => u.email === email)) return null;
+    const token = `recovery-${randomUUID()}`;
+    this.recoveryTokens.push({ email, token });
+    return token;
+  }
 }
 
 /**

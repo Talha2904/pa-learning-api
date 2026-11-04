@@ -11,6 +11,7 @@ import { EvidenceVerificationService } from './application/use-cases/evidence-ve
 import { ItemImportService } from './application/use-cases/item-import.service.js';
 import { LearningItemsService } from './application/use-cases/learning-items.service.js';
 import { LookupsService } from './application/use-cases/lookups.service.js';
+import { PasswordResetService } from './application/use-cases/password-reset.service.js';
 import { PeopleService } from './application/use-cases/people.service.js';
 import { ProgressService } from './application/use-cases/progress.service.js';
 import { RemindersService } from './application/use-cases/reminders.service.js';
@@ -139,6 +140,10 @@ export function buildContainer(
 
   const services: ApiServices = {
     auth: new AuthService(people, lookups, cycles, identity, db, logger, {
+      allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS,
+    }),
+    passwordReset: new PasswordResetService(people, identity, email, clock, logger, {
+      appBaseUrl: env.APP_BASE_URL,
       allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS,
     }),
     lookups: new LookupsService(lookups),

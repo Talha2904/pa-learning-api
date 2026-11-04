@@ -6,6 +6,12 @@ export interface IdentityProvider {
   /** Creates a confirmed email/password account. Throws ConflictError('EMAIL_TAKEN') if it exists. */
   createUser(input: { email: string; password: string; fullName: string }): Promise<{ authUserId: string }>;
   deleteUser(authUserId: string): Promise<void>;
+  /**
+   * Creates a one-time password-recovery token for an existing account WITHOUT sending
+   * any email (we send our own). Returns the hashed token the browser redeems, or null
+   * when no account has this email.
+   */
+  createRecoveryToken(email: string): Promise<string | null>;
 }
 
 /** Verified identity extracted from a bearer token. */

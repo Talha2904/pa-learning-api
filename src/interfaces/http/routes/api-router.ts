@@ -7,6 +7,7 @@ import type { EvidenceVerificationService } from '../../../application/use-cases
 import type { ItemImportService } from '../../../application/use-cases/item-import.service.js';
 import type { LearningItemsService } from '../../../application/use-cases/learning-items.service.js';
 import type { LookupsService } from '../../../application/use-cases/lookups.service.js';
+import type { PasswordResetService } from '../../../application/use-cases/password-reset.service.js';
 import type { PeopleService } from '../../../application/use-cases/people.service.js';
 import type { ProgressService } from '../../../application/use-cases/progress.service.js';
 import type { RemindersService } from '../../../application/use-cases/reminders.service.js';
@@ -25,6 +26,7 @@ import { evidenceUpload, spreadsheetUpload } from '../middleware/upload.js';
 
 export interface ApiServices {
   auth: AuthService;
+  passwordReset: PasswordResetService;
   lookups: LookupsService;
   cycles: CyclesService;
   items: LearningItemsService;
@@ -51,7 +53,7 @@ export interface ApiRouterDeps {
  */
 export function apiRouter({ services: s, tokenVerifier, strictLimiter }: ApiRouterDeps): Router {
   const r = Router();
-  const auth = authController(s.auth);
+  const auth = authController(s.auth, s.passwordReset);
   const lookups = lookupsController(s.lookups);
   const cycles = cyclesController(s.cycles);
   const items = learningItemsController(s.items, s.itemImport);
@@ -63,6 +65,7 @@ export function apiRouter({ services: s, tokenVerifier, strictLimiter }: ApiRout
 
   // ---- public ----
   r.post('/auth/register', strictLimiter, auth.register);
+  r.post('/auth/password-reset', strictLimiter, auth.requestPasswordReset);
 
   // ---- everything below requires a signed-in, active person ----
   r.use(authenticate(tokenVerifier, s.auth));

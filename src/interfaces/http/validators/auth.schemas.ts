@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { LIMITS } from '../../../shared/constants/limits.js';
 
+export const passwordResetBody = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email('Enter a valid email address').max(254)),
+});
+
 export const registerBody = z.object({
   fullName: z.string().trim().min(1, 'Required').max(LIMITS.nameMax),
   email: z.email('Enter a valid email address').max(254),
