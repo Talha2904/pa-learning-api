@@ -4,7 +4,7 @@ import type { ProfileStatus, ReportingAccess, UserRole } from '../../domain/enum
 import type { AuditLog } from '../../domain/repositories/audit-log.js';
 import type { LookupRepository } from '../../domain/repositories/lookup-repository.js';
 import type { PersonFilter, PersonRepository } from '../../domain/repositories/person-repository.js';
-import { can, type Actor } from '../../domain/services/access-policy.js';
+import { can, canEditPerson, canGrantRole, type Actor } from '../../domain/services/access-policy.js';
 import { defaultReportingAccess } from '../../domain/services/reporting-access.js';
 import { toEmail } from '../../domain/value-objects/email.js';
 import { BusinessRuleError, ForbiddenError, NotFoundError, ValidationError } from '../../shared/errors/app-errors.js';
@@ -29,7 +29,7 @@ export interface PersonAdminDto extends PersonDto {
   reportCount: number;
 }
 
-/** User Management (Learning Team only). */
+/** User Management (Learning Team and HR; only the Learning Team can grant or edit the Learning Team role). */
 export class PeopleService {
   constructor(
     private readonly people: PersonRepository,
@@ -52,6 +52,7 @@ export class PeopleService {
 
   async create(actor: Actor, input: PersonInput): Promise<PersonAdminDto> {
     this.assertCanManage(actor);
+    assertCanGrant(actor, input.role);
     return this.uow.run(async () => {
       const email = toEmail(input.email);
       await this.assertValidManager(null, input.lineManagerId);
@@ -96,10 +97,15 @@ export class PeopleService {
     const current = await this.people.findById(id);
     if (!current) throw new NotFoundError('person');
 
+    if (!canEditPerson(actor, current)) {
+      throw new ForbiddenError('Only the Learning Team can change a Learning Team account.', 'LEARNING_TEAM_ONLY');
+    }
+    if (input.role !== undefined) assertCanGrant(actor, input.role);
+
     // Guard against admins locking themselves out.
     if (id === actor.id) {
-      if (input.role !== undefined && input.role !== 'learning_team') {
-        throw new BusinessRuleError('You cannot remove your own Learning Team role.', 'SELF_DEMOTION');
+      if (input.role !== undefined && input.role !== current.role) {
+        throw new BusinessRuleError('You cannot change your own role.', 'SELF_DEMOTION');
       }
       if (input.status !== undefined && input.status !== 'active') {
         throw new BusinessRuleError('You cannot deactivate your own account.', 'SELF_DEACTIVATION');
@@ -169,7 +175,13 @@ export class PeopleService {
   }
 
   private assertCanManage(actor: Actor): void {
-    if (!can(actor, 'manageUsers')) throw new ForbiddenError('Only the Learning Team can manage users.');
+    if (!can(actor, 'manageUsers')) throw new ForbiddenError('Only the Learning Team and HR can manage users.');
+  }
+}
+
+function assertCanGrant(actor: Actor, role: UserRole): void {
+  if (!canGrantRole(actor, role)) {
+    throw new ForbiddenError('Only the Learning Team can give someone the Learning Team role.', 'LEARNING_TEAM_ONLY');
   }
 }
 

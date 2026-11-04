@@ -4,7 +4,7 @@ import type { ReportingAccess, UserRole } from '../../domain/enums.js';
 import type { AuditLog } from '../../domain/repositories/audit-log.js';
 import type { LookupRepository } from '../../domain/repositories/lookup-repository.js';
 import type { PersonRepository } from '../../domain/repositories/person-repository.js';
-import { can, type Actor } from '../../domain/services/access-policy.js';
+import { can, canEditPerson, canGrantRole, type Actor } from '../../domain/services/access-policy.js';
 import { defaultReportingAccess } from '../../domain/services/reporting-access.js';
 import { LIMITS } from '../../shared/constants/limits.js';
 import { ROLE_LABELS } from '../../shared/constants/labels.js';
@@ -126,7 +126,7 @@ export class UserImportService {
         undefined,
         'TOO_MANY_ROWS',
       );
-    const results = await this.validate(rows);
+    const results = await this.validate(actor, rows);
     const errorCount = results.filter((r) => r.errors.length > 0).length;
     return { rows: results, validCount: results.length - errorCount, errorCount };
   }
@@ -141,7 +141,7 @@ export class UserImportService {
         undefined,
         'TOO_MANY_ROWS',
       );
-    const results = await this.validate(rows);
+    const results = await this.validate(actor, rows);
     const bad = results.filter((r) => r.errors.length > 0);
     if (bad.length > 0) {
       throw new ValidationError(
@@ -163,9 +163,9 @@ export class UserImportService {
         const access = u.access ?? defaultReportingAccess(u.role, u.designation?.grantsFullAccess ?? false);
         const existing = await this.people.findByEmail(u.email);
         if (existing) {
-          if (existing.id === actor.id && u.role !== 'learning_team') {
+          if (existing.id === actor.id && u.role !== existing.role) {
             throw new ValidationError(
-              'You cannot remove your own Learning Team role.',
+              'You cannot change your own role.',
               [{ path: u.email, message: 'Self demotion' }],
               'SELF_DEMOTION',
             );
@@ -215,10 +215,12 @@ export class UserImportService {
   }
 
   private async validate(
+    actor: Actor,
     rows: { rowNumber: number; values: Record<string, string> }[],
   ): Promise<UserImportRow[]> {
     const [lookups, everyone] = await Promise.all([this.lookups.all(), this.people.list()]);
     const known = new Set(everyone.map((p) => p.email.toLowerCase()));
+    const byEmail = new Map(everyone.map((p) => [p.email.toLowerCase(), p]));
     const inFile = new Set(rows.map((r) => (r.values.email ?? '').trim().toLowerCase()).filter(Boolean));
     const seen = new Set<string>();
 
@@ -249,6 +251,9 @@ export class UserImportService {
       if (user) {
         if (seen.has(user.email)) errors.push('email appears more than once in this file');
         seen.add(user.email);
+        const current = byEmail.get(user.email);
+        if (!canGrantRole(actor, user.role)) errors.push('only the Learning Team can give someone the Learning Team role');
+        else if (current && !canEditPerson(actor, current)) errors.push('only the Learning Team can change a Learning Team account');
         if (user.lineManagerEmail) {
           if (user.lineManagerEmail === user.email) errors.push('a person cannot be their own line manager');
           else if (!known.has(user.lineManagerEmail) && !inFile.has(user.lineManagerEmail)) {
@@ -277,7 +282,7 @@ export class UserImportService {
   }
 
   private assertCanManage(actor: Actor): void {
-    if (!can(actor, 'manageUsers')) throw new ForbiddenError('Only the Learning Team can import users.');
+    if (!can(actor, 'manageUsers')) throw new ForbiddenError('Only the Learning Team and HR can import users.');
   }
 }
 

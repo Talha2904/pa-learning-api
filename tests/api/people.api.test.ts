@@ -16,7 +16,7 @@ afterAll(async () => {
 });
 
 describe('user management', () => {
-  it('lists people with designation, manager and report counts (admin only)', async () => {
+  it('lists people with designation, manager and report counts (Learning Team and HR only)', async () => {
     const res = await request(o.t.app).get('/api/v1/users').set('Authorization', o.amina.auth);
     expect(res.status).toBe(200);
     const daniel = res.body.data.find((p: { email: string }) => p.email === 'dokoro@pa.co.uk');
@@ -24,7 +24,9 @@ describe('user management', () => {
     const sarah = res.body.data.find((p: { email: string }) => p.email === 'swhitfield@pa.co.uk');
     expect(sarah.lineManager).toMatchObject({ fullName: 'Daniel Okoro' });
 
-    expect((await request(o.t.app).get('/api/v1/users').set('Authorization', o.elena.auth)).status).toBe(403);
+    expect((await request(o.t.app).get('/api/v1/users').set('Authorization', o.elena.auth)).status).toBe(200);
+    expect((await request(o.t.app).get('/api/v1/users').set('Authorization', o.daniel.auth)).status).toBe(403);
+    expect((await request(o.t.app).get('/api/v1/users').set('Authorization', o.sarah.auth)).status).toBe(403);
     expect((await request(o.t.app).get('/api/v1/users?search=sarah').set('Authorization', o.amina.auth)).body.data).toHaveLength(1);
   });
 
@@ -69,6 +71,43 @@ describe('user management', () => {
     expect(demote.body.code).toBe('SELF_DEMOTION');
     const deactivate = await request(o.t.app).patch(`/api/v1/users/${o.amina.id}`).set('Authorization', o.amina.auth).send({ status: 'inactive' });
     expect(deactivate.body.code).toBe('SELF_DEACTIVATION');
+  });
+
+  it('lets HR add and edit people, but never grant or touch the Learning Team role', async () => {
+    const added = await request(o.t.app)
+      .post('/api/v1/users')
+      .set('Authorization', o.elena.auth)
+      .send({ fullName: 'Hannah Hire', email: 'hhire@pa.co.uk', role: 'team_member', designationId: null, lineManagerId: null });
+    expect(added.status).toBe(201);
+
+    const edited = await request(o.t.app).patch(`/api/v1/users/${o.ibraaheem.id}`).set('Authorization', o.elena.auth).send({ role: 'manager' });
+    expect(edited.status).toBe(200);
+    expect(edited.body.data.role).toBe('manager');
+
+    const createAdmin = await request(o.t.app)
+      .post('/api/v1/users')
+      .set('Authorization', o.elena.auth)
+      .send({ fullName: 'Sneaky Admin', email: 'sneaky@pa.co.uk', role: 'learning_team', designationId: null, lineManagerId: null });
+    expect(createAdmin.status).toBe(403);
+    expect(createAdmin.body.code).toBe('LEARNING_TEAM_ONLY');
+
+    const promote = await request(o.t.app).patch(`/api/v1/users/${o.ibraaheem.id}`).set('Authorization', o.elena.auth).send({ role: 'learning_team' });
+    expect(promote.status).toBe(403);
+
+    const selfPromote = await request(o.t.app).patch(`/api/v1/users/${o.elena.id}`).set('Authorization', o.elena.auth).send({ role: 'learning_team' });
+    expect(selfPromote.status).toBe(403);
+
+    const touchAdmin = await request(o.t.app).patch(`/api/v1/users/${o.amina.id}`).set('Authorization', o.elena.auth).send({ status: 'inactive' });
+    expect(touchAdmin.status).toBe(403);
+    expect(touchAdmin.body.code).toBe('LEARNING_TEAM_ONLY');
+
+    const csv = Buffer.from(['name,email,role', 'Import Admin,iadmin@pa.co.uk,Learning Team', 'Amina Patel,apatel@pa.co.uk,Team Member'].join('\n'));
+    const preview = await request(o.t.app).post('/api/v1/users/import/preview').set('Authorization', o.elena.auth).attach('file', csv, 'users.csv');
+    expect(preview.status).toBe(200);
+    expect(preview.body.data.errorCount).toBe(2);
+
+    // Put Ibraaheem back for later tests.
+    await request(o.t.app).patch(`/api/v1/users/${o.ibraaheem.id}`).set('Authorization', o.amina.auth).send({ role: 'team_member' });
   });
 
   it('saves inline edits atomically: one bad change rolls back all', async () => {

@@ -39,7 +39,7 @@ export function composeReminderEmail(input: ReminderEmailInput): EmailMessage {
   const text = [
     `Hi ${input.firstName},`,
     '',
-    'You have learning to complete on the Project Accountants Learning Platform:',
+    'You have learning to complete on Lumen, the Project Accountants learning platform:',
     '',
     ...input.outstanding.map((e) => `• ${line(e)}`),
     '',
@@ -62,7 +62,7 @@ export function composeReminderEmail(input: ReminderEmailInput): EmailMessage {
 
   const html = `<!doctype html><html><body style="font-family:Poppins,Arial,sans-serif;color:#262719;font-size:14px">
 <p>Hi ${escapeHtml(input.firstName)},</p>
-<p>You have learning to complete on the Project Accountants Learning Platform:</p>
+<p>You have learning to complete on <b>Lumen</b>, the Project Accountants learning platform:</p>
 <table style="border-collapse:collapse">${rows}</table>
 ${input.note ? `<p style="margin-top:16px"><b>Note from the Learning Team:</b><br>${escapeHtml(input.note).replace(/\n/g, '<br>')}</p>` : ''}
 <p style="margin-top:20px"><a href="${escapeHtml(input.appUrl)}/my/plan" style="background:#2d8dfe;color:#fff;padding:10px 18px;text-decoration:none;font-weight:600">OPEN MY LEARNING PLAN</a></p>
@@ -98,7 +98,7 @@ export function composeReviewDigestEmail(input: ReviewDigestInput): EmailMessage
     '',
     `Review them: ${input.appUrl}/evidence`,
     '',
-    'Project Accountants Learning Platform',
+    'Lumen by Project Accountants',
   ].join('\n');
   const rows = shown
     .map(

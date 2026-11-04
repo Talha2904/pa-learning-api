@@ -49,7 +49,7 @@ const EnvSchema = z.object({
   SMTP_SECURE: bool(false),
   SMTP_USER: z.string().optional().transform((v) => v || undefined),
   SMTP_PASS: z.string().optional().transform((v) => v || undefined),
-  MAIL_FROM: z.string().default('Project Accountants Learning <learning@projectaccountants.co.uk>'),
+  MAIL_FROM: z.string().default('Lumen by Project Accountants <learning@projectaccountants.co.uk>'),
   REMINDER_SCHEDULER_ENABLED: bool(false),
 
   /** Automatic evidence checks with Google Gemini (ADR 0005). Needs GEMINI_API_KEY. */

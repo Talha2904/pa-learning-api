@@ -42,7 +42,8 @@ export function permissionsFor(actor: Actor): Permissions {
     scope,
     manageItems: isAdmin,
     manageCycles: isAdmin,
-    manageUsers: isAdmin,
+    // HR manages users too (requested 2026-11-04), limited by canGrantRole / canEditPerson below.
+    manageUsers: isAdmin || actor.role === 'hr',
     manageReminders: isAdmin,
     reviewEvidence: isAdmin || actor.role === 'hr',
     decideEvidence: isAdmin || actor.role === 'hr',
@@ -51,6 +52,19 @@ export function permissionsFor(actor: Actor): Permissions {
 }
 
 export type Capability = Exclude<keyof Permissions, 'scope'>;
+
+/**
+ * Only the Learning Team can make someone Learning Team, so HR (who can also
+ * manage users) cannot promote themselves or anyone else to admin.
+ */
+export function canGrantRole(actor: Actor, role: UserRole): boolean {
+  return actor.role === 'learning_team' || role !== 'learning_team';
+}
+
+/** Learning Team accounts can be edited only by the Learning Team. */
+export function canEditPerson(actor: Actor, target: { role: UserRole }): boolean {
+  return actor.role === 'learning_team' || target.role !== 'learning_team';
+}
 
 export function can(actor: Actor, capability: Capability): boolean {
   return permissionsFor(actor)[capability];

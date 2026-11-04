@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canViewPerson, permissionsFor, visibilityScope, type Actor } from '../../src/domain/services/access-policy.js';
+import { canEditPerson, canGrantRole, canViewPerson, permissionsFor, visibilityScope, type Actor } from '../../src/domain/services/access-policy.js';
 import { defaultReportingAccess } from '../../src/domain/services/reporting-access.js';
 
 const actor = (over: Partial<Actor>): Actor => ({
@@ -37,9 +37,28 @@ describe('permissionsFor', () => {
     });
   });
 
-  it('lets HR review and decide evidence and view the team, but not manage anything', () => {
+  it('lets HR review evidence, view the team and manage users, but not items, years or reminders', () => {
     const p = permissionsFor(actor({ role: 'hr' }));
-    expect(p).toMatchObject({ reviewEvidence: true, decideEvidence: true, viewTeam: true, manageItems: false, manageUsers: false });
+    expect(p).toMatchObject({
+      reviewEvidence: true,
+      decideEvidence: true,
+      viewTeam: true,
+      manageUsers: true,
+      manageItems: false,
+      manageCycles: false,
+      manageReminders: false,
+    });
+  });
+
+  it('keeps the Learning Team role in Learning Team hands', () => {
+    const hr = actor({ role: 'hr' });
+    const lt = actor({ role: 'learning_team' });
+    expect(canGrantRole(hr, 'learning_team')).toBe(false);
+    expect(canGrantRole(hr, 'hr')).toBe(true);
+    expect(canGrantRole(lt, 'learning_team')).toBe(true);
+    expect(canEditPerson(hr, { role: 'learning_team' })).toBe(false);
+    expect(canEditPerson(hr, { role: 'team_member' })).toBe(true);
+    expect(canEditPerson(lt, { role: 'learning_team' })).toBe(true);
   });
 
   it('lets a manager view (their) team only', () => {

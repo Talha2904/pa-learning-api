@@ -11,7 +11,7 @@ const LINK_FONT = { color: { argb: 'FF0563C1' }, underline: true } as const;
 export class ExcelWorkbook implements WorkbookWriter, WorkbookReader {
   async write(sheets: SheetSpec[], meta: { title?: string } = {}): Promise<Buffer> {
     const wb = new ExcelJS.Workbook();
-    wb.creator = 'Project Accountants Learning Platform';
+    wb.creator = 'Lumen by Project Accountants';
     wb.company = 'Project Accountants';
     wb.title = meta.title ?? '';
     wb.created = new Date();

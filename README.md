@@ -1,4 +1,4 @@
-# Project Accountants Learning Platform - Backend
+# Lumen by Project Accountants - Backend
 
 REST API for the CPD / learning-compliance platform.
 Node.js 20 · TypeScript · Express 5 · Clean Architecture · Supabase PostgreSQL.
