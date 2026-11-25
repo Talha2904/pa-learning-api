@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { composePasswordResetEmail } from '../../src/application/services/account-email.js';
+import { composePasswordResetEmail, composeWelcomeEmail } from '../../src/application/services/account-email.js';
 import { createTestApp, type TestApp } from '../support/test-app.js';
 
 let t: TestApp;
@@ -62,6 +62,15 @@ describe('POST /auth/password-reset', () => {
     expect(t.email.sent).toHaveLength(1);
   });
 
+  it('gives an active person with no account one, plus a set-password link', async () => {
+    await t.db.query(`insert into profiles (full_name, email, role) values ('Noah Nolink', 'nnolink@pa.co.uk', 'team_member')`);
+    expect((await ask('nnolink@pa.co.uk')).status).toBe(202);
+    await vi.waitFor(() => expect(t.email.sent).toHaveLength(1));
+    expect(t.email.sent[0]).toMatchObject({ to: 'nnolink@pa.co.uk', subject: 'Your Lumen account is ready' });
+    const linked = await t.db.query<{ auth_user_id: string | null }>(`select auth_user_id from profiles where email = 'nnolink@pa.co.uk'`);
+    expect(linked.rows[0]!.auth_user_id).not.toBeNull();
+  });
+
   it('rejects a malformed email with a field error', async () => {
     const res = await ask('not-an-email');
     expect(res.status).toBe(400);
@@ -71,6 +80,22 @@ describe('POST /auth/password-reset', () => {
   it('works without signing in', async () => {
     t.clock.todayValue = '2026-09-12';
     expect((await request(t.app).post('/api/v1/auth/password-reset').send({ email: 'glin@pa.co.uk' })).status).toBe(202);
+  });
+});
+
+describe('composeWelcomeEmail', () => {
+  it('escapes names and links in the HTML and says how to get a new link', () => {
+    const m = composeWelcomeEmail({
+      to: 'a@b.co',
+      firstName: '<b>Al</b>',
+      setPasswordUrl: 'https://x.test/r?a=1&b="2"',
+      signInUrl: 'https://x.test/',
+    });
+    expect(m.subject).toBe('Your Lumen account is ready');
+    expect(m.html).toContain('&lt;b&gt;Al&lt;/b&gt;');
+    expect(m.html).toContain('https://x.test/r?a=1&amp;b=&quot;2&quot;');
+    expect(m.html).not.toContain('<b>Al</b>');
+    expect(m.text).toContain('Forgot password?');
   });
 });
 

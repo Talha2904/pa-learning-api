@@ -11,6 +11,7 @@ import { EvidenceVerificationService } from './application/use-cases/evidence-ve
 import { ItemImportService } from './application/use-cases/item-import.service.js';
 import { LearningItemsService } from './application/use-cases/learning-items.service.js';
 import { LookupsService } from './application/use-cases/lookups.service.js';
+import { AccountInviteService } from './application/use-cases/account-invite.service.js';
 import { PasswordResetService } from './application/use-cases/password-reset.service.js';
 import { PeopleService } from './application/use-cases/people.service.js';
 import { ProgressService } from './application/use-cases/progress.service.js';
@@ -138,6 +139,11 @@ export function buildContainer(
     env.APP_BASE_URL,
   );
 
+  const invites = new AccountInviteService(people, identity, email, logger, {
+    appBaseUrl: env.APP_BASE_URL,
+    allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS,
+  });
+
   const services: ApiServices = {
     auth: new AuthService(people, lookups, cycles, identity, db, logger, {
       allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS,
@@ -145,13 +151,13 @@ export function buildContainer(
     passwordReset: new PasswordResetService(people, identity, email, clock, logger, {
       appBaseUrl: env.APP_BASE_URL,
       allowedEmailDomains: env.ALLOWED_EMAIL_DOMAINS,
-    }),
+    }, invites),
     lookups: new LookupsService(lookups),
     cycles: new CyclesService(cycles, audit, db, itemsService),
     items: itemsService,
     itemImport: new ItemImportService(items, cycles, lookups, people, audit, db, workbook, workbook),
-    people: new PeopleService(people, lookups, audit, db),
-    userImport: new UserImportService(people, lookups, audit, db, workbook, workbook),
+    people: new PeopleService(people, lookups, audit, db, invites),
+    userImport: new UserImportService(people, lookups, audit, db, workbook, workbook, invites),
     progress: new ProgressService(snapshots),
     completions: new CompletionsService(
       completions,

@@ -5,6 +5,7 @@ import type { Clock } from '../ports/clock.js';
 import type { EmailSender } from '../ports/email-sender.js';
 import type { IdentityProvider } from '../ports/identity-provider.js';
 import { composePasswordResetEmail } from '../services/account-email.js';
+import type { AccountInviteService } from './account-invite.service.js';
 
 export interface PasswordResetOptions {
   /** Frontend origin used in the emailed link, e.g. https://lumen.example. */
@@ -39,6 +40,8 @@ export class PasswordResetService {
     private readonly clock: Clock,
     private readonly logger: Logger,
     private readonly options: PasswordResetOptions,
+    /** Gives active people who still have no account one (plus a set-password link) instead of nothing. */
+    private readonly invites?: AccountInviteService,
   ) {
     this.cooldownMs = options.cooldownMs ?? 60_000;
   }
@@ -66,7 +69,14 @@ export class PasswordResetService {
 
     try {
       const person = await this.people.findByEmail(email);
-      if (!person || !person.authUserId || person.status !== 'active') return false;
+      if (!person || person.status !== 'active') return false;
+      if (!person.authUserId) {
+        if (!this.invites) return false;
+        this.lastSent.set(email, now);
+        const sent = await this.invites.invite(person.id);
+        if (!sent) this.lastSent.delete(email);
+        return sent;
+      }
 
       const token = await this.identity.createRecoveryToken(email);
       if (!token) return false;

@@ -10,6 +10,7 @@ import { toEmail } from '../../domain/value-objects/email.js';
 import { BusinessRuleError, ForbiddenError, NotFoundError, ValidationError } from '../../shared/errors/app-errors.js';
 import { toPersonDto, type PersonDto } from '../dto/person.dto.js';
 import type { UnitOfWork } from '../ports/unit-of-work.js';
+import type { AccountInviteService } from './account-invite.service.js';
 
 export interface PersonInput {
   fullName: string;
@@ -36,6 +37,8 @@ export class PeopleService {
     private readonly lookups: LookupRepository,
     private readonly audit: AuditLog,
     private readonly uow: UnitOfWork,
+    /** Creates the new person's sign-in and emails them a set-password link. */
+    private readonly invites?: AccountInviteService,
   ) {}
 
   async list(actor: Actor, filter: Omit<PersonFilter, 'ids'> = {}): Promise<PersonAdminDto[]> {
@@ -53,7 +56,7 @@ export class PeopleService {
   async create(actor: Actor, input: PersonInput): Promise<PersonAdminDto> {
     this.assertCanManage(actor);
     assertCanGrant(actor, input.role);
-    return this.uow.run(async () => {
+    const dto = await this.uow.run(async () => {
       const email = toEmail(input.email);
       await this.assertValidManager(null, input.lineManagerId);
       const reportingAccess = input.reportingAccess ?? (await this.defaultAccess(input.role, input.designationId));
@@ -70,6 +73,11 @@ export class PeopleService {
       await this.audit.record({ actorId: actor.id, action: 'user.created', entityType: 'profile', entityId: created.id, metadata: { email, role: input.role } });
       return this.toAdminDto(created);
     });
+    // After the commit, so a failed invite never undoes the add (they can use "Forgot password?").
+    if (!this.invites) return dto;
+    await this.invites.inviteWithoutWaitingForEmail(dto.id);
+    const fresh = await this.people.findById(dto.id); // now linked to the new account
+    return fresh ? this.toAdminDto(fresh) : dto;
   }
 
   async update(actor: Actor, id: string, input: PersonUpdate): Promise<PersonAdminDto> {

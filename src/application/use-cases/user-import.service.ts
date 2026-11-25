@@ -11,6 +11,7 @@ import { ROLE_LABELS } from '../../shared/constants/labels.js';
 import { ForbiddenError, ValidationError } from '../../shared/errors/app-errors.js';
 import type { UnitOfWork } from '../ports/unit-of-work.js';
 import type { WorkbookReader, WorkbookWriter } from '../ports/workbook.js';
+import type { AccountInviteService } from './account-invite.service.js';
 import { byName } from '../services/import-parsing.js';
 
 interface ParsedUser {
@@ -57,6 +58,8 @@ export class UserImportService {
     private readonly uow: UnitOfWork,
     private readonly reader: WorkbookReader,
     private readonly writer: WorkbookWriter,
+    /** Creates sign-ins for newly added people and emails them set-password links. */
+    private readonly invites?: AccountInviteService,
   ) {}
 
   async template(actor: Actor): Promise<{ fileName: string; content: Buffer }> {
@@ -150,7 +153,8 @@ export class UserImportService {
         'IMPORT_INVALID',
       );
     }
-    return this.uow.run(async () => {
+    const createdIds: string[] = [];
+    const result = await this.uow.run(async () => {
       const designations = (await this.lookups.all()).designations;
       const users = rows.map((r) => parseUserRow(r.values, designations).user!);
       let added = 0;
@@ -190,6 +194,7 @@ export class UserImportService {
             avatarColor: avatarColorFor(seed++),
           });
           idByEmail.set(u.email, created.id);
+          createdIds.push(created.id);
           added++;
         }
       }
@@ -212,6 +217,9 @@ export class UserImportService {
       });
       return { added, updated };
     });
+    // After the commit and without waiting: emailing a large file's worth of people takes a while.
+    if (this.invites && createdIds.length > 0) void this.invites.inviteInBackground(createdIds);
+    return result;
   }
 
   private async validate(

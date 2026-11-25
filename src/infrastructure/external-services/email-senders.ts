@@ -21,6 +21,10 @@ export class SmtpEmailSender implements EmailSender {
       port: options.port,
       secure: options.secure,
       auth: options.user ? { user: options.user, pass: options.pass } : undefined,
+      // Fail fast instead of nodemailer's multi-minute defaults, so callers can retry or move on.
+      connectionTimeout: 15_000,
+      greetingTimeout: 15_000,
+      socketTimeout: 30_000,
     });
   }
 

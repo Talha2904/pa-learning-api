@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createOrg, type Org } from '../support/org.js';
 import { lookupIds } from '../support/test-app.js';
 
@@ -36,7 +36,44 @@ describe('user management', () => {
       .set('Authorization', o.amina.auth)
       .send({ fullName: 'Paula Partner', email: 'PPartner@pa.co.uk', role: 'team_member', designationId: ids.designations['Partner'], lineManagerId: null });
     expect(res.status).toBe(201);
-    expect(res.body.data).toMatchObject({ email: 'ppartner@pa.co.uk', reportingAccess: 'full', hasAccount: false });
+    expect(res.body.data).toMatchObject({ email: 'ppartner@pa.co.uk', reportingAccess: 'full', hasAccount: true });
+  });
+
+  it('creates the new person a sign-in and emails them a set-password link', async () => {
+    o.t.email.sent.length = 0;
+    const res = await request(o.t.app)
+      .post('/api/v1/users')
+      .set('Authorization', o.amina.auth)
+      .send({ fullName: 'Nina New', email: 'nnew@pa.co.uk', role: 'team_member', designationId: null, lineManagerId: null });
+    expect(res.status).toBe(201);
+    expect([...o.t.identity.users.values()]).toContainEqual({ email: 'nnew@pa.co.uk', fullName: 'Nina New' });
+
+    await vi.waitFor(() => expect(o.t.email.sent).toHaveLength(1));
+    const mail = o.t.email.sent[0]!;
+    expect(mail).toMatchObject({ to: 'nnew@pa.co.uk', subject: 'Your Lumen account is ready' });
+    const token = o.t.identity.recoveryTokens.at(-1)!.token;
+    expect(mail.text).toContain(`http://localhost:5173/?token_hash=${encodeURIComponent(token)}&type=recovery`);
+    expect(mail.text).toContain('Hi Nina,');
+  });
+
+  it('still adds the person when the invite fails, and sends nothing to inactive people', async () => {
+    o.t.email.sent.length = 0;
+    o.t.identity.failNextCreate = true;
+    const failed = await request(o.t.app)
+      .post('/api/v1/users')
+      .set('Authorization', o.amina.auth)
+      .send({ fullName: 'Fay Fail', email: 'ffail@pa.co.uk', role: 'team_member', designationId: null, lineManagerId: null });
+    expect(failed.status).toBe(201);
+    expect(failed.body.data).toMatchObject({ email: 'ffail@pa.co.uk', hasAccount: false });
+
+    const inactive = await request(o.t.app)
+      .post('/api/v1/users')
+      .set('Authorization', o.amina.auth)
+      .send({ fullName: 'Ian Inactive', email: 'iinactive@pa.co.uk', role: 'team_member', designationId: null, lineManagerId: null, status: 'inactive' });
+    expect(inactive.status).toBe(201);
+    expect(inactive.body.data.hasAccount).toBe(false);
+    await new Promise((r) => setTimeout(r, 50)); // any background email would have gone by now
+    expect(o.t.email.sent).toHaveLength(0);
   });
 
   it('rejects a duplicate email', async () => {
@@ -159,6 +196,7 @@ describe('user import', () => {
   });
 
   it('imports: creates, updates by email and links managers', async () => {
+    o.t.email.sent.length = 0;
     const rows = [
       { rowNumber: 2, values: { name: 'New Boss', email: 'boss@pa.co.uk', role: 'Manager', designation: 'Senior Manager' } },
       { rowNumber: 3, values: { name: 'New Starter', email: 'starter@pa.co.uk', role: '', designation: 'Junior Accountant', line_manager_email: 'boss@pa.co.uk' } },
@@ -170,5 +208,10 @@ describe('user import', () => {
 
     const list = await request(o.t.app).get('/api/v1/users?search=starter').set('Authorization', o.amina.auth);
     expect(list.body.data[0]).toMatchObject({ role: 'team_member', lineManager: { fullName: 'New Boss' }, reportingAccess: 'self' });
+
+    // Only the two new people are invited (in the background); Grace already had an account.
+    await vi.waitFor(() => expect(o.t.email.sent.map((m) => m.to).sort()).toEqual(['boss@pa.co.uk', 'starter@pa.co.uk']));
+    const after = await request(o.t.app).get('/api/v1/users?search=starter').set('Authorization', o.amina.auth);
+    expect(after.body.data[0].hasAccount).toBe(true);
   });
 });
