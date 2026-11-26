@@ -25,6 +25,7 @@
     "evidence:backfill": "tsx scripts/backfill-evidence-checks.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
     "@google/genai": "^2.27.0",
     "cors": "^2.8.6",
     "exceljs": "^4.4.0",

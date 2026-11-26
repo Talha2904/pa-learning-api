@@ -26,9 +26,12 @@ upload → evidence_checks row (queued) → background worker → AI model reads
   Otherwise **verified** (`review_source = 'ai'`).
 - **The AI never rejects and never overrides a person.** Only the Learning Team or HR can reject (with a reason), which
   makes the item outstanding again. (HR was read-only until 2026-11-03; the LMS team asked for HR to approve too.)
-- **Provider-agnostic port** (`EvidenceAnalyzer`); Gemini (`@google/genai`) is the adapter, chosen for cost and native
-  PDF/image reading. The document is passed as untrusted data and the system prompt tells the model to ignore any
-  instructions inside it.
+- **Provider-agnostic port** (`EvidenceAnalyzer`); Gemini (`@google/genai`) is the default adapter, chosen for cost and
+  native PDF/image reading. A Claude adapter (`@anthropic-ai/sdk`, structured outputs) can be selected with
+  `AI_PROVIDER=claude` (`ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `CLAUDE_FALLBACK_MODELS` used when the main model is
+  overloaded, as with Gemini); switching back is `AI_PROVIDER=gemini`. Both share the
+  same prompt and output validation; a Claude safety refusal is treated as a failed check (to a person, never verified).
+  The document is passed as untrusted data and the system prompt tells the model to ignore any instructions inside it.
 - **Queue in Postgres** (`evidence_checks`, `FOR UPDATE SKIP LOCKED`), retries with back-off for temporary errors,
   stale-job recovery, and superseding when a file is replaced. Uploads never wait for the model.
 - Off by default (`AI_VERIFICATION_ENABLED`); without it evidence simply waits for manual review.

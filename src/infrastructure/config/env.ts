@@ -52,14 +52,28 @@ const EnvSchema = z.object({
   MAIL_FROM: z.string().default('Lumen by Project Accountants <learning@projectaccountants.co.uk>'),
   REMINDER_SCHEDULER_ENABLED: bool(false),
 
-  /** Automatic evidence checks with Google Gemini (ADR 0005). Needs GEMINI_API_KEY. */
+  /** Automatic evidence checks (ADR 0005). Needs the key of the selected AI_PROVIDER. */
   AI_VERIFICATION_ENABLED: bool(false),
+  /** Which model reads the evidence: gemini (default) or claude. */
+  AI_PROVIDER: z.enum(['gemini', 'claude']).default('gemini'),
   GEMINI_API_KEY: z.string().optional().transform((v) => v || undefined),
   GEMINI_MODEL: z.string().min(1).default('gemini-flash-latest'),
   /** Tried in order when GEMINI_MODEL is overloaded (comma-separated; empty = no fallback). */
   GEMINI_FALLBACK_MODELS: z
     .string()
     .default('gemini-flash-lite-latest')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
+  CLAUDE_MODEL: z.string().min(1).default('claude-opus-5-5'),
+  /** Tried in order when CLAUDE_MODEL is overloaded (comma-separated; empty = no fallback). */
+  CLAUDE_FALLBACK_MODELS: z
+    .string()
+    .default('claude-sonnet-5-5')
     .transform((v) =>
       v
         .split(',')
@@ -84,10 +98,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     const problems = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${problems}\nSee .env.example.`);
   }
-  if (parsed.data.AI_VERIFICATION_ENABLED && !parsed.data.GEMINI_API_KEY) {
-    throw new Error(
-      'Invalid environment configuration:\n  - GEMINI_API_KEY: required when AI_VERIFICATION_ENABLED=true\nSee .env.example.',
-    );
+  if (parsed.data.AI_VERIFICATION_ENABLED) {
+    const keyName = parsed.data.AI_PROVIDER === 'claude' ? 'ANTHROPIC_API_KEY' : 'GEMINI_API_KEY';
+    if (!parsed.data[keyName]) {
+      throw new Error(
+        `Invalid environment configuration:\n  - ${keyName}: required when AI_VERIFICATION_ENABLED=true and AI_PROVIDER=${parsed.data.AI_PROVIDER}\nSee .env.example.`,
+      );
+    }
   }
   if (parsed.data.CORS_ORIGINS.length === 0) parsed.data.CORS_ORIGINS.push(parsed.data.APP_BASE_URL);
   return parsed.data;

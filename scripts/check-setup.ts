@@ -4,6 +4,7 @@
  *
  *   npm run check:setup
  */
+import Anthropic from '@anthropic-ai/sdk';
 import { loadEnv } from '../src/infrastructure/config/env.js';
 import { PgDatabase } from '../src/infrastructure/database/pg-database.js';
 
@@ -130,7 +131,31 @@ async function main() {
   }
 
   console.log('\nAI evidence verification');
-  if (!env.GEMINI_API_KEY) {
+  console.log(`  - provider: ${env.AI_PROVIDER}${env.AI_VERIFICATION_ENABLED ? '' : ' (AI_VERIFICATION_ENABLED=false - checks will not run)'}`);
+  if (env.AI_PROVIDER === 'claude') {
+    if (!env.ANTHROPIC_API_KEY) {
+      console.log('  - off (no ANTHROPIC_API_KEY) - evidence waits for the Learning Team to review');
+    } else {
+      // Looks each model up with the key (free; no file is sent).
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 15_000, maxRetries: 0 });
+      for (const [label, model, setting] of [
+        ['model', env.CLAUDE_MODEL, 'CLAUDE_MODEL'],
+        ...env.CLAUDE_FALLBACK_MODELS.map((m) => ['fallback model', m, 'CLAUDE_FALLBACK_MODELS'] as const),
+      ] as const) {
+        try {
+          const info = await client.models.retrieve(model);
+          ok(`Claude ${label} "${info.id}" available`);
+        } catch (err) {
+          if (err instanceof Anthropic.AuthenticationError) {
+            fail('Claude API key', 'rejected - check ANTHROPIC_API_KEY');
+            break;
+          }
+          if (err instanceof Anthropic.NotFoundError) fail(`Claude ${label}`, `"${model}" not found - check ${setting}`);
+          else fail('Claude API', (err as Error).message);
+        }
+      }
+    }
+  } else if (!env.GEMINI_API_KEY) {
     console.log('  - off (no GEMINI_API_KEY) - evidence waits for the Learning Team to review');
   } else {
     // Lists models with the key (free; no file is sent). The key goes in a header, never the URL.
@@ -155,7 +180,6 @@ async function main() {
     } catch (err) {
       fail('Gemini API', (err as Error).message);
     }
-    if (!env.AI_VERIFICATION_ENABLED) console.log('  ! key set but AI_VERIFICATION_ENABLED=false - checks will not run');
   }
 }
 

@@ -22,6 +22,7 @@ import type { Env } from './infrastructure/config/env.js';
 import type { Database } from './infrastructure/database/database.js';
 import { LogEmailSender, SmtpEmailSender } from './infrastructure/external-services/email-senders.js';
 import { ExcelWorkbook } from './infrastructure/external-services/excel-workbook.js';
+import { ClaudeEvidenceAnalyzer } from './infrastructure/external-services/claude-evidence-analyzer.js';
 import { GeminiEvidenceAnalyzer } from './infrastructure/external-services/gemini-evidence-analyzer.js';
 import { SupabaseJwtVerifier } from './infrastructure/external-services/jwt-token-verifier.js';
 import { ReminderScheduler } from './infrastructure/external-services/reminder-scheduler.js';
@@ -103,9 +104,13 @@ export function buildContainer(
   const analyzer =
     overrides.analyzer !== undefined
       ? overrides.analyzer
-      : env.GEMINI_API_KEY
-        ? new GeminiEvidenceAnalyzer(env.GEMINI_API_KEY, [env.GEMINI_MODEL, ...env.GEMINI_FALLBACK_MODELS])
-        : null;
+      : env.AI_PROVIDER === 'claude'
+        ? env.ANTHROPIC_API_KEY
+          ? new ClaudeEvidenceAnalyzer(env.ANTHROPIC_API_KEY, [env.CLAUDE_MODEL, ...env.CLAUDE_FALLBACK_MODELS])
+          : null
+        : env.GEMINI_API_KEY
+          ? new GeminiEvidenceAnalyzer(env.GEMINI_API_KEY, [env.GEMINI_MODEL, ...env.GEMINI_FALLBACK_MODELS])
+          : null;
 
   // Application
   const snapshots = new ProgressSnapshotLoader(cycles, items, completions, people, lookups, clock, evidenceChecks);
