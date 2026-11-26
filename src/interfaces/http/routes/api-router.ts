@@ -114,6 +114,8 @@ export function apiRouter({ services: s, tokenVerifier, strictLimiter }: ApiRout
   r.post('/completions/:id/recheck', admin('decideEvidence'), strictLimiter, learning.recheck);
 
   // Reminders
+  r.get('/settings/ai', admin('reviewEvidence'), learning.aiSettings);
+  r.put('/settings/ai', admin('manageSettings'), learning.updateAiSettings);
   r.get('/reminders/settings', admin('manageReminders'), reminders.settings);
   r.put('/reminders/settings', admin('manageReminders'), reminders.updateSettings);
   r.get('/reminders/candidates', admin('manageReminders'), reminders.candidates);

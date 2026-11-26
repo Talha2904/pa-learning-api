@@ -34,6 +34,7 @@ describe('permissionsFor', () => {
       reviewEvidence: true,
       decideEvidence: true,
       viewTeam: true,
+      manageSettings: true,
     });
   });
 
@@ -47,6 +48,7 @@ describe('permissionsFor', () => {
       manageItems: false,
       manageCycles: false,
       manageReminders: false,
+      manageSettings: false,
     });
   });
 

@@ -21,6 +21,8 @@ export interface Permissions {
   decideEvidence: boolean;
   /** Dashboard / Team Progress / team report exports (scoped). */
   viewTeam: boolean;
+  /** Settings page (AI checks on/off) - Learning Team only. */
+  manageSettings: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export function permissionsFor(actor: Actor): Permissions {
     reviewEvidence: isAdmin || actor.role === 'hr',
     decideEvidence: isAdmin || actor.role === 'hr',
     viewTeam: scope !== 'self',
+    manageSettings: isAdmin,
   };
 }
 

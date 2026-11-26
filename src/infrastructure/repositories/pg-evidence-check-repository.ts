@@ -111,6 +111,13 @@ export class PgEvidenceCheckRepository implements EvidenceCheckRepository {
     return res.rowCount > 0;
   }
 
+  async cancelPending(): Promise<number> {
+    const res = await this.db.query(
+      `update evidence_checks set status = 'superseded', finished_at = now() where status in ('queued', 'running')`,
+    );
+    return res.rowCount;
+  }
+
   async supersede(id: string): Promise<void> {
     await this.db.query(`update evidence_checks set status = 'superseded', finished_at = now() where id = $1`, [id]);
   }

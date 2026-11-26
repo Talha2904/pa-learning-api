@@ -12,6 +12,8 @@ export interface EvidenceCheckRepository {
   fail(id: string, error: string, retryInMs: number | null): Promise<boolean>;
   /** The file this job was for has been replaced. */
   supersede(id: string): Promise<void>;
+  /** AI checks switched off: drop every waiting or in-flight job so that evidence goes to a person. Returns how many. */
+  cancelPending(): Promise<number>;
   /** Re-queue jobs left `running` by a crashed process. */
   requeueStale(olderThanMs: number): Promise<number>;
   /** Most recent check per completion. */

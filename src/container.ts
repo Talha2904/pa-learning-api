@@ -30,6 +30,7 @@ import { SupabaseFileStorage } from './infrastructure/external-services/supabase
 import { SupabaseIdentityProvider } from './infrastructure/external-services/supabase-identity-provider.js';
 import { SystemClock } from './infrastructure/external-services/system-clock.js';
 import { VerificationWorker } from './infrastructure/external-services/verification-worker.js';
+import { PgAiSettingsRepository } from './infrastructure/repositories/pg-ai-settings-repository.js';
 import { PgAuditLog } from './infrastructure/repositories/pg-audit-log.js';
 import { PgCompletionRepository } from './infrastructure/repositories/pg-completion-repository.js';
 import { PgCycleRepository } from './infrastructure/repositories/pg-cycle-repository.js';
@@ -78,6 +79,7 @@ export function buildContainer(
   const reminderRepo = new PgReminderRepository(db);
   const audit = new PgAuditLog(db);
   const evidenceChecks = new PgEvidenceCheckRepository(db);
+  const aiSettings = new PgAiSettingsRepository(db);
 
   // External services
   const clock = overrides.clock ?? new SystemClock(env.APP_TIMEZONE);
@@ -127,8 +129,11 @@ export function buildContainer(
     db,
     clock,
     logger,
+    aiSettings,
     {
       enabled: env.AI_VERIFICATION_ENABLED,
+      provider: env.AI_PROVIDER,
+      model: env.AI_PROVIDER === 'claude' ? env.CLAUDE_MODEL : env.GEMINI_MODEL,
       maxAttempts: env.AI_MAX_ATTEMPTS,
       policy: { minConfidence: env.AI_MIN_CONFIDENCE, dateToleranceDays: env.AI_DATE_TOLERANCE_DAYS },
     },

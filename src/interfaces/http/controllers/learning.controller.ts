@@ -4,7 +4,7 @@ import type { EvidenceVerificationService } from '../../../application/use-cases
 import type { ProgressService } from '../../../application/use-cases/progress.service.js';
 import { actorOf, ok } from '../http-context.js';
 import { idParams } from '../validators/common.schemas.js';
-import { completionFields, cycleQuery, evidenceDecisionBody, evidenceRegisterQuery, itemIdParams, profileIdParams } from '../validators/feature.schemas.js';
+import { aiSettingsBody, completionFields, cycleQuery, evidenceDecisionBody, evidenceRegisterQuery, itemIdParams, profileIdParams } from '../validators/feature.schemas.js';
 import { parse } from '../validators/validate.js';
 
 /** Progress (dashboard, team, plans) and completions/evidence. */
@@ -63,5 +63,13 @@ export function learningController(
     ok(res, await verification.recheck(actorOf(res), parse(idParams, req.params).id), 202);
   };
 
-  return { overview, members, member, myPlan, submit, myEvidence, register, evidenceUrl, decide, recheck };
+  const aiSettings: RequestHandler = async (_req, res) => {
+    ok(res, await verification.settings(actorOf(res)));
+  };
+
+  const updateAiSettings: RequestHandler = async (req, res) => {
+    ok(res, await verification.setChecksEnabled(actorOf(res), parse(aiSettingsBody, req.body).checksEnabled));
+  };
+
+  return { overview, members, member, myPlan, submit, myEvidence, register, evidenceUrl, decide, recheck, aiSettings, updateAiSettings };
 }

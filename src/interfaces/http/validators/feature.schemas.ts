@@ -135,6 +135,7 @@ export const sendRemindersBody = z.object({
   message: optionalText(LIMITS.reminderMessageMax),
 });
 
+export const aiSettingsBody = z.object({ checksEnabled: z.boolean() });
 export const reminderLogQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
 
 // ---------- reports ----------

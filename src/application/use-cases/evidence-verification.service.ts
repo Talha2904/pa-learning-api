@@ -1,6 +1,7 @@
 import type { Completion } from '../../domain/entities/completion.js';
 import type { EvidenceCheck } from '../../domain/entities/evidence-check.js';
 import type { Person } from '../../domain/entities/person.js';
+import type { AiSettingsRepository } from '../../domain/repositories/ai-settings-repository.js';
 import type { AuditLog } from '../../domain/repositories/audit-log.js';
 import type { CompletionRepository } from '../../domain/repositories/completion-repository.js';
 import type { CycleRepository } from '../../domain/repositories/cycle-repository.js';
@@ -19,13 +20,32 @@ import type { FileStorage } from '../ports/file-storage.js';
 import type { UnitOfWork } from '../ports/unit-of-work.js';
 
 export interface EvidenceVerificationOptions {
-  /** Master switch; when false nothing is queued and evidence waits for a person. */
+  /**
+   * Server default (AI_VERIFICATION_ENABLED), used until the Learning Team sets the
+   * switch in Settings. When off, nothing is queued and evidence waits for a person.
+   */
   enabled: boolean;
+  /** Shown in Settings, e.g. "claude" / "claude-opus-5-5". */
+  provider: string;
+  model: string;
   maxAttempts: number;
   policy: EvidencePolicyOptions;
 }
 
 export type ManualDecision = 'verified' | 'rejected';
+
+export interface AiSettingsDto {
+  /** Whether automatic checks run now. */
+  checksEnabled: boolean;
+  /** False when the server has no AI key for the selected provider: the switch can't be turned on. */
+  available: boolean;
+  /** 'settings' = set by the Learning Team in the app; 'server' = the server default applies. */
+  source: 'settings' | 'server';
+  provider: string;
+  model: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
 
 /**
  * Wait before retry n (1-based). Spread over ~1.5 h so a demand spike on the
@@ -72,22 +92,85 @@ export class EvidenceVerificationService {
     private readonly uow: UnitOfWork,
     private readonly clock: Clock,
     private readonly logger: Logger,
+    private readonly aiSettings: AiSettingsRepository,
     private readonly options: EvidenceVerificationOptions,
   ) {}
 
-  get enabled(): boolean {
-    return this.options.enabled && this.analyzer !== null;
+  /** An AI key is configured on the server, so checks *can* run (the worker starts). */
+  get available(): boolean {
+    return this.analyzer !== null;
+  }
+
+  /** Whether checks run right now: the Settings switch, else the server default. */
+  async isEnabled(): Promise<boolean> {
+    if (!this.available) return false;
+    return (await this.storedSwitch()) ?? this.options.enabled;
+  }
+
+  /** The switch saved in Settings (null = never set). A database problem falls back to the server default. */
+  private async storedSwitch(): Promise<boolean | null> {
+    try {
+      return (await this.aiSettings.get()).checksEnabled;
+    } catch (err) {
+      this.logger.warn('could not read AI settings, using the server default', { err });
+      return null;
+    }
+  }
+
+  /** Learning Team / HR: is the AI on? (shown on Evidence Review and in Settings). */
+  async settings(actor: Actor): Promise<AiSettingsDto> {
+    if (!can(actor, 'reviewEvidence') && !can(actor, 'manageSettings')) throw new ForbiddenError();
+    let stored: Awaited<ReturnType<AiSettingsRepository['get']>> = { checksEnabled: null, updatedAt: null, updatedBy: null };
+    try {
+      stored = await this.aiSettings.get();
+    } catch (err) {
+      this.logger.warn('could not read AI settings, using the server default', { err });
+    }
+    const updatedBy = stored.updatedBy ? ((await this.people.findById(stored.updatedBy))?.fullName ?? null) : null;
+    return {
+      checksEnabled: this.available && (stored.checksEnabled ?? this.options.enabled),
+      available: this.available,
+      source: stored.checksEnabled === null ? 'server' : 'settings',
+      provider: this.options.provider,
+      model: this.options.model,
+      updatedAt: stored.updatedAt,
+      updatedBy,
+    };
+  }
+
+  /** Learning Team admins: turn automatic checks on or off. Takes effect for the next upload. */
+  async setChecksEnabled(actor: Actor, enabled: boolean): Promise<AiSettingsDto> {
+    if (!can(actor, 'manageSettings')) throw new ForbiddenError();
+    if (enabled && !this.available) {
+      throw new BusinessRuleError(
+        'AI checks are not set up on the server (no AI key). Ask whoever manages the server to add it.',
+        'AI_NOT_CONFIGURED',
+      );
+    }
+    await this.uow.run(async () => {
+      await this.aiSettings.setChecksEnabled(enabled, actor.id);
+      // Switched off: checks still waiting would show "Checking" forever - hand them to a person now.
+      const handedToReview = enabled ? 0 : await this.checks.cancelPending();
+      await this.audit.record({
+        actorId: actor.id,
+        action: 'ai.checks_' + (enabled ? 'enabled' : 'disabled'),
+        entityType: 'ai_settings',
+        entityId: '1',
+        metadata: { checksEnabled: enabled, handedToReview },
+      });
+    });
+    return this.settings(actor);
   }
 
   /** Queue a check for the completion's current file (no-op when disabled or no file). */
   async enqueue(completion: Completion): Promise<EvidenceCheck | null> {
-    if (!this.enabled || !completion.evidence) return null;
+    if (!completion.evidence || !(await this.isEnabled())) return null;
     return this.checks.enqueue(completion.id, completion.evidence.path);
   }
 
   /** Run one due job. Returns false when the queue is empty. */
   async processNext(): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!(await this.isEnabled())) return false;
     const job = await this.checks.claimNext();
     if (!job) return false;
     await this.run(job);
@@ -131,7 +214,7 @@ export class EvidenceVerificationService {
   /** Learning Team / HR: run the automatic check again (e.g. after a provider outage). */
   async recheck(actor: Actor, completionId: string): Promise<CompletionDto> {
     if (!can(actor, 'decideEvidence')) throw new ForbiddenError();
-    if (!this.enabled) {
+    if (!(await this.isEnabled())) {
       throw new BusinessRuleError('Automatic evidence checks are turned off.', 'VERIFICATION_DISABLED');
     }
     const completion = await this.completions.findById(completionId);

@@ -19,7 +19,7 @@ export class VerificationWorker {
   ) {}
 
   start(): void {
-    if (this.timer || !this.verification.enabled) return;
+    if (this.timer || !this.verification.available) return; // switched on/off per job in Settings
     void this.verification
       .recoverStale()
       .then((n) => n > 0 && this.logger.info('re-queued interrupted evidence checks', { count: n }))
